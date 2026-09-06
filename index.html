@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Team Record Tracker</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f9fafb; }
+    .app { min-height: 100vh; }
+    .login-screen { display: flex; height: 100vh; align-items: center; justify-content: center; background: #f9fafb; }
+    .login-form { background: white; padding: 40px; border-radius: 12px; width: 100%; max-width: 400px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .login-form h1 { font-size: 24px; margin-bottom: 8px; }
+    .login-form p { color: #666; margin-bottom: 24px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+    .form-group input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+    .btn { padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; width: 100%; font-size: 14px; }
+    .btn:hover { background: #2563eb; }
+    .btn-danger { background: #ef4444; }
+    .btn-danger:hover { background: #dc2626; }
+    .btn-success { background: #10b981; }
+    .btn-success:hover { background: #059669; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #e5e7eb; }
+    .header h1 { font-size: 28px; font-weight: 500; }
+    .user-info { font-size: 13px; color: #666; }
+    .toolbar { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+    .toolbar input { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
+    .btn-small { padding: 8px 16px; font-size: 13px; width: auto; }
+    .records-list { display: flex; flex-direction: column; gap: 12px; }
+    .record-card { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; cursor: pointer; transition: all 0.2s; }
+    .record-card:hover { border-color: #3b82f6; background: #f0f9ff; }
+    .record-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
+    .record-type { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; color: white; }
+    .type-case { background: #ef4444; }
+    .type-task { background: #3b82f6; }
+    .type-discussion { background: #f59e0b; }
+    .type-decision { background: #10b981; }
+    .record-title { font-weight: 500; margin: 4px 0; }
+    .record-meta { display: flex; gap: 16px; font-size: 12px; color: #666; flex-wrap: wrap; }
+    .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+    .modal.show { display: flex; }
+    .modal-content { background: white; border-radius: 12px; width: 90%; max-width: 600px; max-height: 90vh; overflow-y: auto; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; font-size: 18px; font-weight: 500; }
+    .close-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: #999; }
+    .form-group textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; min-height: 80px; font-family: inherit; resize: vertical; }
+    .form-group select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
+    .comments-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb; }
+    .comment { background: #f9fafb; padding: 10px; border-radius: 6px; margin-bottom: 8px; font-size: 13px; }
+    .comment-meta { color: #666; font-size: 12px; margin-bottom: 4px; }
+    .comment-text { color: #333; }
+    .status-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; background: #dbeafe; color: #1e40af; }
+    .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+    .error { color: #dc2626; font-size: 13px; margin-top: 4px; }
+    .success { color: #10b981; font-size: 13px; padding: 8px; background: #ecfdf5; border-radius: 4px; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    const API_URL = 'https://team-recorder-production.up.railway.app';
+
+    function TeamRecordTracker() {
+      const [currentUser, setCurrentUser] = useState(null);
+      const [currentUserEmail, setCurrentUserEmail] = useState(null);
+      const [token, setToken] = useState(localStorage.getItem('token'));
+      const [records, setRecords] = useState([]);
+      const [searchTerm, setSearchTerm] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [message, setMessage] = useState('');
+
+      // Modals
+      const [showLoginModal, setShowLoginModal] = useState(!token);
+      const [showNewRecordModal, setShowNewRecordModal] = useState(false);
+      const [showRecordDetailModal, setShowRecordDetailModal] = useState(false);
+      const [selectedRecord, setSelectedRecord] = useState(null);
+
+      // Form states
+      const [loginName, setLoginName] = useState('');
+      const [loginEmail, setLoginEmail] = useState('');
+      const [recordForm, setRecordForm] = useState({
+        type: 'case',
+        title: '',
+        desc: '',
+        respondent: '',
+        status: 'open'
+      });
+      const [newComment, setNewComment] = useState('');
+
+      useEffect(() => {
+        if (token) {
+          fetchRecords();
+        }
+      }, [token]);
+
+      const handleLogin = async () => {
+        if (!loginName.trim() || !loginEmail.trim()) {
+          setMessage('Enter name and email');
+          return;
+        }
+
+        setLoading(true);
+        setMessage('');
+        try {
+          const response = await fetch(`${API_URL}/api/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: loginName, email: loginEmail })
+          });
+
+          const data = await response.json();
+          if (data.token) {
+            localStorage.setItem('token', data.token);
+            setToken(data.token);
+            setCurrentUser(loginName);
+            setCurrentUserEmail(loginEmail);
+            setShowLoginModal(false);
+            setMessage('');
+          } else {
+            setMessage(data.error || 'Login failed');
+          }
+        } catch (err) {
+          setMessage('Login error: ' + err.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const fetchRecords = async () => {
+        try {
+          const response = await fetch(`${API_URL}/api/records`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            setRecords(data);
+          }
+        } catch (err) {
+          console.error('Fetch error:', err);
+        }
+      };
+
+      const handleCreateRecord = async () => {
+        if (!recordForm.title.trim() || !recordForm.respondent.trim()) {
+          setMessage('Fill required fields');
+          return;
+        }
+
+        setLoading(true);
+        try {
+          const response = await fetch(`${API_URL}/api/records`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              ...recordForm,
+              creator: currentUser,
+              creatorEmail: currentUserEmail
+            })
+          });
+
+          if (response.ok) {
+            await fetchRecords();
+            setShowNewRecordModal(false);
+            setRecordForm({
+              type: 'case',
+              title: '',
+              desc: '',
+              respondent: '',
+              status: 'open'
+            });
+            setMessage('');
+          }
+        } catch (err) {
+          setMessage('Error: ' + err.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const handleAddComment = async () => {
+        if (!newComment.trim() || !selectedRecord) return;
+
+        setLoading(true);
+        try {
+          const response = await fetch(`${API_URL}/api/records/${selectedRecord._id}/comments`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              author: currentUser,
+              text: newComment
+            })
+          });
+
+          if (response.ok) {
+            const updated = await response.json();
+            setSelectedRecord(updated);
+            setNewComment('');
+            await fetchRecords();
+          }
+        } catch (err) {
+          setMessage('Error: ' + err.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const handleExportCSV = async () => {
+        try {
+          const response = await fetch(`${API_URL}/api/records/export/csv`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+
+          if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'records.csv';
+            a.click();
+          }
+        } catch (err) {
+          setMessage('Export failed: ' + err.message);
+        }
+      };
+
+      const handleExportRecord = async (recordId) => {
+        try {
+          const response = await fetch(`${API_URL}/api/records/${recordId}/export/json`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${data.title}.json`;
+            a.click();
+          }
+        } catch (err) {
+          setMessage('Export failed: ' + err.message);
+        }
+      };
+
+      const handleLogout = () => {
+        localStorage.removeItem('token');
+        setToken(null);
+        setCurrentUser(null);
+        setShowLoginModal(true);
+      };
+
+      const filteredRecords = records.filter(r =>
+        r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.respondent.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (r.desc && r.desc.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+
+      const typeColors = {
+        case: '#ef4444',
+        task: '#3b82f6',
+        discussion: '#f59e0b',
+        decision: '#10b981'
+      };
+
+      if (showLoginModal) {
+        return (
+          <div className="login-screen">
+            <div className="login-form">
+              <h1>Team Record Tracker</h1>
+              <p>Shared workspace for cases, tasks, discussions</p>
+              
+              {message && <div className="error">{message}</div>}
+
+              <div className="form-group">
+                <label>Your name</label>
+                <input
+                  type="text"
+                  value={loginName}
+                  onChange={(e) => setLoginName(e.target.value)}
+                  placeholder="e.g., Bunny"
+                  onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Email</label>
+                <input
+                  type="email"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  placeholder="you@company.com"
+                  onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                />
+              </div>
+
+              <button className="btn" onClick={handleLogin} disabled={loading}>
+                {loading ? 'Logging in...' : 'Enter workspace'}
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="app">
+          <div className="container">
+            <div className="header">
+              <div>
+                <h1>Records</h1>
+                <div className="user-info">Logged in as: {currentUser} ({currentUserEmail})</div>
+              </div>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button className="btn btn-success btn-small" onClick={handleExportCSV}>
+                  Export All (CSV)
+                </button>
+                <button className="btn btn-danger btn-small" onClick={handleLogout}>
+                  Log out
+                </button>
+              </div>
+            </div>
+
+            {message && <div className="success">{message}</div>}
+
+            <div className="toolbar">
+              <input
+                type="text"
+                placeholder="Search records…"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              <button className="btn btn-small" onClick={() => setShowNewRecordModal(true)}>
+                + New record
+              </button>
+            </div>
+
+            <div className="records-list">
+              {filteredRecords.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#999', padding: '40px' }}>
+                  No records. Create one to start.
+                </div>
+              ) : (
+                filteredRecords.map(record => (
+                  <div
+                    key={record._id}
+                    className="record-card"
+                    onClick={() => {
+                      setSelectedRecord(record);
+                      setShowRecordDetailModal(true);
+                    }}
+                  >
+                    <div className="record-header">
+                      <div>
+                        <span className={`record-type type-${record.type}`}>
+                          {record.type.toUpperCase()}
+                        </span>
+                        <div className="record-title">{record.title}</div>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#999' }}>{record.date} {record.time}</div>
+                    </div>
+                    <div className="record-meta">
+                      <span><strong>Respondent:</strong> {record.respondent}</span>
+                      <span><strong>Created by:</strong> {record.creator}</span>
+                      <span className="status-badge">{record.status}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* New Record Modal */}
+          <div className={`modal ${showNewRecordModal ? 'show' : ''}`} onClick={() => setShowNewRecordModal(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <span>New record</span>
+                <button className="close-btn" onClick={() => setShowNewRecordModal(false)}>✕</button>
+              </div>
+
+              {message && <div className="error">{message}</div>}
+
+              <div className="form-group">
+                <label>Type</label>
+                <select
+                  value={recordForm.type}
+                  onChange={(e) => setRecordForm({ ...recordForm, type: e.target.value })}
+                >
+                  <option value="case">Case</option>
+                  <option value="task">Task</option>
+                  <option value="discussion">Discussion</option>
+                  <option value="decision">Decision</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Title</label>
+                <input
+                  type="text"
+                  value={recordForm.title}
+                  onChange={(e) => setRecordForm({ ...recordForm, title: e.target.value })}
+                  placeholder="Brief title"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Description</label>
+                <textarea
+                  value={recordForm.desc}
+                  onChange={(e) => setRecordForm({ ...recordForm, desc: e.target.value })}
+                  placeholder="Details…"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Who handled this?</label>
+                <input
+                  type="text"
+                  value={recordForm.respondent}
+                  onChange={(e) => setRecordForm({ ...recordForm, respondent: e.target.value })}
+                  placeholder="Name or team member"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Status</label>
+                <select
+                  value={recordForm.status}
+                  onChange={(e) => setRecordForm({ ...recordForm, status: e.target.value })}
+                >
+                  <option value="open">Open</option>
+                  <option value="in-progress">In progress</option>
+                  <option value="closed">Closed</option>
+                </select>
+              </div>
+
+              <button className="btn" onClick={handleCreateRecord} disabled={loading}>
+                {loading ? 'Creating...' : 'Create record'}
+              </button>
+            </div>
+          </div>
+
+          {/* Record Detail Modal */}
+          {showRecordDetailModal && selectedRecord && (
+            <div className={`modal show`} onClick={() => setShowRecordDetailModal(false)}>
+              <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-header">
+                  <span>{selectedRecord.title}</span>
+                  <button className="close-btn" onClick={() => setShowRecordDetailModal(false)}>✕</button>
+                </div>
+
+                <div style={{ marginBottom: '16px' }}>
+                  <span className={`record-type type-${selectedRecord.type}`}>
+                    {selectedRecord.type.toUpperCase()}
+                  </span>
+                  <div style={{ fontSize: '12px', color: '#666', marginTop: '8px' }}>
+                    {selectedRecord.date} {selectedRecord.time}
+                  </div>
+                </div>
+
+                <div style={{ background: '#f9fafb', padding: '12px', borderRadius: '6px', marginBottom: '16px' }}>
+                  <p><strong>Description:</strong></p>
+                  <p style={{ color: '#666', marginTop: '6px' }}>{selectedRecord.desc || '(No description)'}</p>
+                </div>
+
+                <table style={{ width: '100%', fontSize: '13px', marginBottom: '16px' }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ color: '#666', padding: '6px 0' }}><strong>Respondent:</strong></td>
+                      <td style={{ padding: '6px 0' }}>{selectedRecord.respondent}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ color: '#666', padding: '6px 0' }}><strong>Created by:</strong></td>
+                      <td style={{ padding: '6px 0' }}>{selectedRecord.creator}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ color: '#666', padding: '6px 0' }}><strong>Status:</strong></td>
+                      <td style={{ padding: '6px 0' }}>
+                        <span className="status-badge">{selectedRecord.status}</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <button className="btn btn-success btn-small" onClick={() => handleExportRecord(selectedRecord._id)} style={{ marginBottom: '16px' }}>
+                  Export Record (JSON)
+                </button>
+
+                <div className="comments-section">
+                  <p style={{ fontWeight: '500', marginBottom: '12px' }}>Follow-ups & updates</p>
+
+                  <div style={{ marginBottom: '12px', maxHeight: '250px', overflowY: 'auto' }}>
+                    {selectedRecord.comments.length === 0 ? (
+                      <p style={{ color: '#999', fontSize: '13px' }}>No updates yet</p>
+                    ) : (
+                      selectedRecord.comments.map((comment, idx) => (
+                        <div key={idx} className="comment">
+                          <div className="comment-meta">
+                            {comment.author} • {new Date(comment.time).toLocaleString()}
+                          </div>
+                          <div className="comment-text">{comment.text}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div>
+                    <textarea
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      placeholder="Add update…"
+                      style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '13px', minHeight: '60px', fontFamily: 'inherit', marginBottom: '8px' }}
+                    />
+                    <button
+                      className="btn btn-small"
+                      onClick={handleAddComment}
+                      disabled={loading}
+                    >
+                      {loading ? 'Adding...' : 'Add update'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.render(<TeamRecordTracker />, document.getElementById('root'));
+  </script>
+</body>
+</html>
